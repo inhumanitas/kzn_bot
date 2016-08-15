@@ -37,7 +37,7 @@ class Filters(object):
     description = {
         number: u"Номер документа",
         title: u"Название документа",
-        signed_after: u"Дата подписания документа",
+        signed_after: u"Дата подписания документа(в формате 16.08.2016)",
         category_id: u"Вид документа",
         organization_id: u"Принявший орган",
     }
