@@ -1,0 +1,7 @@
+Windows installation
+
+1 install python
+2 install pip
+3 install requests, pyTelegramBotAPI
+4 install lxml
+    https://pypi.python.org/pypi/lxml/3.3.3#downloads
