@@ -16,12 +16,14 @@ if not os.path.exists(token_path):
 
 bot_father_token = open('token').readline().strip()
 
-bot = telebot.AsyncTeleBot(bot_father_token)
+bot = telebot.TeleBot(bot_father_token)
 
 GET_DATA_INTERVAL = 10
 
 
 class Filters(object):
+    # filter value maximum length
+    max_value_len = 100
     number = 'number'
     title = 'title'
     signed_after = 'signed_after'
@@ -66,21 +68,33 @@ class Filters(object):
 
 
 class UserSearchData(object):
+    # max filters count per user
+    max_filters = 5
+
     _data = {
-        # user_id : Filters object
+        # user_id : Filter objects
     }
 
     def __getitem__(self, item):
-        return self._data.get(item, Filters())
+        return self._data.get(item, [])
 
     def __setitem__(self, key, value):
         self._data[key] = value
 
     def clear(self, user_id):
-        self._data[user_id] = Filters()
+        self._data[user_id] = []
+
+    def add(self, user_id, **kwargs):
+        try:
+            self._data[user_id].append(Filters(**kwargs))
+        except KeyError:
+            self._data[user_id] = [Filters(**kwargs)]
 
     def get_all(self):
         return self._data
+
+    def get_last(self, user_id):
+        return self._data[user_id][-1]
 
 
 class Kzn(object):
@@ -131,11 +145,16 @@ user_filters_cache = UserSearchData()
 def number_command(message):
     def handler(message, key):
         user_id = message.chat.id
-        value = message.text
+        value = message.text[:Filters.max_value_len]
         print(u'New key filter for user {u}: {k}={v}'.format(
             k=key, v=value, u=message.chat.first_name))
-        cached_user_filter = user_filters_cache[user_id]
-        cached_user_filter.update(**{key: value})
+
+        filters = user_filters_cache[user_id]
+        if filters:
+            cached_user_filter = user_filters_cache.get_last(user_id)
+            cached_user_filter.update(**{key: value})
+        else:
+            user_filters_cache.add(user_id, **{key: value})
 
     key = message.text.strip(u'/')
     bot.send_message(message.chat.id,
@@ -145,14 +164,45 @@ def number_command(message):
     bot.register_next_step_handler(message, callback_fn)
 
 
-@bot.message_handler(commands=['clear'])
-def number_command(message):
+@bot.message_handler(commands=['start'])
+def start_command(message):
     user_filters_cache.clear(message.chat.id)
+    bot.send_message(message.chat.id, u'Сейчас пришлю последние 10 документов')
 
 
-@bot.message_handler(commands=['please'])
-def number_command(message):
-    user_filters_cache[message.chat.id] = Filters()
+@bot.message_handler(commands=['clear'])
+def clear_command(message):
+    e = "Нет фильтрации"
+    user_filters_cache.clear(message.chat.id)
+    bot.send_message(message.chat.id,
+                     str(user_filters_cache[message.chat.id]) or e)
+
+
+@bot.message_handler(commands=['list'])
+def list_command(message):
+    e = "Нет фильтрации"
+    bot.send_message(message.chat.id,
+                     str(user_filters_cache[message.chat.id]) or e)
+
+
+@bot.message_handler(commands=['add'])
+def add_command(message):
+    if len(user_filters_cache[message.chat.id]) >= UserSearchData.max_filters:
+        bot.send_message(
+            message.chat.id,
+            u'Достигнуто максимально допустимое количество '
+            u'фильтров: %d' % UserSearchData.max_filters)
+    else:
+        user_filters_cache.add(message.chat.id)
+        bot.send_message(message.chat.id,
+                         str(user_filters_cache[message.chat.id]))
+
+
+def send_data(user_id, **kwargs):
+    data = Kzn.get_new_doc(**kwargs)
+    for url, title in data:
+        msg = title.replace(u'\n', u' ').strip() + u'\n' + url
+        bot.send_message(user_id, msg)
 
 
 def main():
@@ -164,12 +214,14 @@ def main():
     while True:
         print('user_filters_cache', user_filters_cache.get_all())
         # send data to all subscribers
-        for user_id in user_filters_cache.get_all():
-            user_filter = user_filters_cache[user_id]
-            data = Kzn.get_new_doc(**user_filter.to_dict())
-            for url, title in data:
-                msg = title.replace(u'\n', u' ').strip() + u'\n' + url
-                bot.send_message(user_id, msg)
+        for user_id in user_filters_cache.get_all().copy():
+            user_filters = user_filters_cache[user_id]
+            if user_filters:
+                for user_filter in user_filters:
+                    send_data(user_id, **user_filter.to_dict())
+            else:
+                send_data(user_id)
+
         sleep(GET_DATA_INTERVAL)
 
 
