@@ -18,6 +18,8 @@ bot_father_token = open('token').readline().strip()
 
 bot = telebot.AsyncTeleBot(bot_father_token)
 
+GET_DATA_INTERVAL = 10
+
 
 class Filters(object):
     number = 'number'
@@ -49,9 +51,10 @@ class Filters(object):
         self.update(**kwargs)
 
     def __repr__(self):
-        params = u';'.join(
-            unicode(k)+u'='+unicode(getattr(self, k, u'')) for k in self.keys)
-        return u'Filters('+params+u')'
+        params = u'; '.join(
+            unicode(k)+u'='+unicode(getattr(self, k, u''))
+            for k in self.keys if getattr(self, k, None))
+        return (u'Filters('+params+u')').encode('utf-8')
 
     def to_dict(self):
         return {k: getattr(self, k) for k in self.keys}
@@ -81,19 +84,19 @@ class UserSearchData(object):
 
 
 class Kzn(object):
-    index = 'http://docs.kzn.ru'
-    search_str = '/ru/documents?utf8=%E2%9C%93'
-    filter_template = '&search_document_type%5B{param}%5D={value}'
-    signed_after_date_fmt = 'd.m.Y'  # 16.08.2016
+    index = u'http://docs.kzn.ru'
+    search_str = u'/ru/documents?utf8=%E2%9C%93'
+    filter_template = u'&search_document_type%5B{param}%5D={value}'
+    # signed_after_date_fmt = 'd.m.Y'  # 16.08.2016
 
-    xpath = '//div[@class="search-result-item"]/a'
+    xpath = u'//div[@class="search-result-item"]/a'
     _data = {}
 
     @classmethod
     def get_url(cls, **kwargs):
         search_str = cls.search_str
         for param in Filters.keys:
-            value = kwargs.get(param, '')
+            value = kwargs.get(param, u'')
             search_str += cls.filter_template.format(param=param, value=value)
 
         return cls.index + search_str
@@ -107,7 +110,7 @@ class Kzn(object):
             documents = index_html.xpath(cls.xpath)
 
         for doc in documents:
-            url = cls.index + doc.get('href')
+            url = cls.index + doc.get(u'href')
             title = doc.text_content()
             yield url, title
 
@@ -127,10 +130,14 @@ user_filters_cache = UserSearchData()
 @bot.message_handler(commands=Filters.keys)
 def number_command(message):
     def handler(message, key):
-        cached_user_filter = user_filters_cache[message.chat.id]
-        cached_user_filter.update(**{key: message.text})
+        user_id = message.chat.id
+        value = message.text
+        print(u'New key filter for user {u}: {k}={v}'.format(
+            k=key, v=value, u=message.chat.first_name))
+        cached_user_filter = user_filters_cache[user_id]
+        cached_user_filter.update(**{key: value})
 
-    key = message.text.strip('/')
+    key = message.text.strip(u'/')
     bot.send_message(message.chat.id,
                      Filters.description.get(key, u'Не распознанная команда'))
 
@@ -138,7 +145,7 @@ def number_command(message):
     bot.register_next_step_handler(message, callback_fn)
 
 
-@bot.message_handler(commands=['clear_filters'])
+@bot.message_handler(commands=['clear'])
 def number_command(message):
     user_filters_cache.clear(message.chat.id)
 
@@ -149,20 +156,21 @@ def number_command(message):
 
 
 def main():
-    print 'Starting bot'
+    print(u'Starting bot')
 
     polling = threading.Thread(target=bot.polling)
     polling.start()
 
     while True:
-        print 'user_filters_cache', user_filters_cache.get_all()
+        print('user_filters_cache', user_filters_cache.get_all())
         # send data to all subscribers
         for user_id in user_filters_cache.get_all():
             user_filter = user_filters_cache[user_id]
             data = Kzn.get_new_doc(**user_filter.to_dict())
             for url, title in data:
-                bot.send_message(user_id, title)
-        sleep(10)
+                msg = title.replace(u'\n', u' ').strip() + u'\n' + url
+                bot.send_message(user_id, msg)
+        sleep(GET_DATA_INTERVAL)
 
 
 if __name__ == '__main__':

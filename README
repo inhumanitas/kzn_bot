@@ -5,3 +5,7 @@ Windows installation
 3 install requests, pyTelegramBotAPI
 4 install lxml
     https://pypi.python.org/pypi/lxml/3.3.3#downloads
+
+Linux installation
+
+    pip install -r requirements.txt
