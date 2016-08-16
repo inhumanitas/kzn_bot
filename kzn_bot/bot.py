@@ -104,7 +104,11 @@ class Kzn(object):
     # signed_after_date_fmt = 'd.m.Y'  # 16.08.2016
 
     xpath = u'//div[@class="search-result-item"]/a'
-    _data = {}
+    __data = {
+        # user_id: {
+        #   key: value
+        # }
+    }
 
     @classmethod
     def get_url(cls, **kwargs):
@@ -129,13 +133,26 @@ class Kzn(object):
             yield url, title
 
     @classmethod
-    def get_new_doc(cls, **kwargs):
+    def get_new_doc(cls, user_id, **kwargs):
         for url, title in cls.get_documents(**kwargs):
-            if url in cls._data:
+            if url in cls.get_data_by_user(user_id):
                 continue
 
-            cls._data[url] = title
+            cls.append_data_by_user(user_id, url, title)
             yield url, title
+
+    @classmethod
+    def append_data_by_user(cls, user_id, key, value):
+        if user_id in cls.__data:
+            cls.__data[user_id][key] = value
+        else:
+            cls.__data[user_id] = {
+                key: value
+            }
+
+    @classmethod
+    def get_data_by_user(cls, user_id):
+        return cls.__data.get(user_id, {})
 
 
 user_filters_cache = UserSearchData()
@@ -199,8 +216,7 @@ def add_command(message):
 
 
 def send_data(user_id, **kwargs):
-    data = Kzn.get_new_doc(**kwargs)
-    for url, title in data:
+    for url, title in Kzn.get_new_doc(user_id, **kwargs):
         msg = title.replace(u'\n', u' ').strip() + u'\n' + url
         bot.send_message(user_id, msg)
 
