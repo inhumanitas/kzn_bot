@@ -18,7 +18,7 @@ bot_father_token = open('token').readline().strip()
 
 bot = telebot.TeleBot(bot_father_token)
 
-GET_DATA_INTERVAL = 10
+GET_DATA_INTERVAL = 7
 
 
 class Filters(object):
@@ -226,4 +226,7 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print 'exiting now'
