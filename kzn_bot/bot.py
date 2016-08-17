@@ -1,5 +1,7 @@
 # coding=utf-8
-
+import json
+import logging
+import logging.config
 import os
 import threading
 from time import sleep
@@ -8,6 +10,45 @@ import requests
 import telebot
 
 from lxml import html
+
+logger = logging.getLogger(__name__)
+
+# load config from file
+
+# logging.config.fileConfig('logging.ini', disable_existing_loggers=False)
+
+# or, for dictConfig
+
+logging.config.dictConfig({
+    'version': 1,
+    'disable_existing_loggers': False,  # this fixes the problem
+    'formatters': {
+        'standard': {
+            'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+            'fmt': '%m/%d/%Y %H:%M:%S',
+            'datefmt': '%m/%d/%Y %H:%M:%S'
+        },
+    },
+    'handlers': {
+        'default': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'standard',
+        },
+        'file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': 'bot.log',
+            'formatter': 'standard',
+        },
+    },
+    'loggers': {
+        __name__: {
+            'handlers': ['default', 'file'],
+            'level': 'DEBUG',
+        }
+    }
+})
 
 
 token_path = 'token'
@@ -19,6 +60,7 @@ bot_father_token = open('token').readline().strip()
 bot = telebot.TeleBot(bot_father_token)
 
 GET_DATA_INTERVAL = 7
+filters_file_name = 'filters.json'
 
 
 class Filters(object):
@@ -75,6 +117,11 @@ class UserSearchData(object):
         # user_id : Filter objects
     }
 
+    def __init__(self, file_name=None):
+        super(UserSearchData, self).__init__()
+        if file_name:
+            self.load_from_file(file_name)
+
     def __getitem__(self, item):
         return self._data.get(item, [])
 
@@ -95,6 +142,25 @@ class UserSearchData(object):
 
     def get_last(self, user_id):
         return self._data[user_id][-1]
+
+    def save_to_file(self, file_name):
+        raw_data = {
+            k: map(Filters.to_dict, v) for k, v in self._data.items()
+        }
+        json_encoded = json.dumps(raw_data)
+        with open(file_name, 'w') as fh:
+            fh.write(json_encoded)
+
+    def load_from_file(self, file_name):
+        if os.path.exists(file_name):
+            try:
+                raw_data = json.load(open(file_name))
+            except ValueError as e:
+                logger.error(e)
+            else:
+                self._data = {
+                    k: [Filters(**kw) for kw in v] for k, v in raw_data.items()
+                }
 
 
 class Kzn(object):
@@ -155,7 +221,7 @@ class Kzn(object):
         return cls.__data.get(user_id, {})
 
 
-user_filters_cache = UserSearchData()
+user_filters_cache = UserSearchData(filters_file_name)
 
 
 @bot.message_handler(commands=Filters.keys)
@@ -163,7 +229,7 @@ def number_command(message):
     def handler(message, key):
         user_id = message.chat.id
         value = message.text[:Filters.max_value_len]
-        print(u'New key filter for user {u}: {k}={v}'.format(
+        logger.info(u'New key filter for user {u}: {k}={v}'.format(
             k=key, v=value, u=message.chat.first_name))
 
         filters = user_filters_cache[user_id]
@@ -222,13 +288,13 @@ def send_data(user_id, **kwargs):
 
 
 def main():
-    print(u'Starting bot')
+    logger.info(u'Starting bot')
 
     polling = threading.Thread(target=bot.polling)
     polling.start()
 
     while True:
-        print('user_filters_cache', user_filters_cache.get_all())
+        logger.debug(user_filters_cache.get_all())
         # send data to all subscribers
         for user_id in user_filters_cache.get_all().copy():
             user_filters = user_filters_cache[user_id]
@@ -245,4 +311,6 @@ if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        print 'exiting now'
+        logger.info('exiting now')
+
+    user_filters_cache.save_to_file(filters_file_name)
