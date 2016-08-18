@@ -159,7 +159,8 @@ class UserSearchData(object):
                 logger.error(e)
             else:
                 self._data = {
-                    k: [Filters(**kw) for kw in v] for k, v in raw_data.items()
+                    int(k): [Filters(**kw) for kw in v]
+                    for k, v in raw_data.items()
                 }
 
 
@@ -238,6 +239,8 @@ def number_command(message):
             cached_user_filter.update(**{key: value})
         else:
             user_filters_cache.add(user_id, **{key: value})
+        # save filters
+        user_filters_cache.save_to_file(filters_file_name)
 
     key = message.text.strip(u'/')
     bot.send_message(message.chat.id,
@@ -310,7 +313,7 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except KeyboardInterrupt:
-        logger.info('exiting now')
+    except Exception as e:
+        logger.critical(e)
 
-    user_filters_cache.save_to_file(filters_file_name)
+    logger.info('exiting now')
