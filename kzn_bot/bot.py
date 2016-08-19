@@ -8,6 +8,7 @@ from time import sleep
 
 import requests
 import telebot
+from telebot import types
 
 from lxml import html
 
@@ -124,6 +125,9 @@ class UserSearchData(object):
     def __setitem__(self, key, value):
         self._data[key] = value
 
+    def __contains__(self, item):
+        return item in self._data
+
     def clear(self, user_id):
         self._data[user_id] = []
 
@@ -220,6 +224,12 @@ class Kzn(object):
 
 user_filters_cache = UserSearchData(filters_file_name)
 
+presets = {
+    # Name: Filter object
+    u'Дорожные знаки': Filters(title=u'движения', signed_after='01.08.2016'),
+    u'Градострой': Filters(title=u'градостроительных', signed_after='01.08.2016'),
+}
+
 
 @bot.message_handler(commands=Filters.keys)
 def number_command(message):
@@ -285,6 +295,35 @@ def add_command(message):
         user_filters_cache.add(message.chat.id)
         bot.send_message(message.chat.id,
                          str(user_filters_cache[message.chat.id]))
+
+
+@bot.message_handler(commands=['presets'])
+def presets_command(message):
+    def callback(msg):
+        filter_name = msg.text
+        if filter_name in presets:
+            user_id = msg.chat.id
+            if user_id in user_filters_cache:
+                user_filters_cache[user_id].append(presets[filter_name])
+            else:
+                user_filters_cache[user_id] = presets[filter_name]
+
+            user_msg = u'Фильтр добавлен: {0}'.format(filter_name)
+        else:
+            user_msg = u'Неверно задан фильтр: {0}'.format(filter_name)
+
+        markup = types.ReplyKeyboardHide()
+        bot.send_message(message.chat.id, user_msg, reply_markup=markup)
+        if GOD:
+            bot.send_message(GOD, user_msg + u' ' + msg.chat.first_name)
+
+    markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, selective=True)
+    markup.row(*presets.keys())
+
+    msg = bot.send_message(message.chat.id, u"Выберите фильтр",
+                           reply_markup=markup)
+
+    bot.register_next_step_handler(msg, callback)
 
 
 def send_data(user_id, **kwargs):
