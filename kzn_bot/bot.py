@@ -13,12 +13,6 @@ from lxml import html
 
 logger = logging.getLogger(__name__)
 
-# load config from file
-
-# logging.config.fileConfig('logging.ini', disable_existing_loggers=False)
-
-# or, for dictConfig
-
 logging.config.dictConfig({
     'version': 1,
     'disable_existing_loggers': False,  # this fixes the problem
@@ -55,7 +49,9 @@ token_path = 'token'
 if not os.path.exists(token_path):
     raise ValueError('No token file found! get token from bot father')
 
-bot_father_token = open('token').readline().strip()
+with open('token') as fh:
+    bot_father_token = fh.readline().strip()
+    GOD = fh.readline().strip()
 
 bot = telebot.TeleBot(bot_father_token)
 
@@ -230,8 +226,9 @@ def number_command(message):
     def handler(message, key):
         user_id = message.chat.id
         value = message.text[:Filters.max_value_len]
-        logger.info(u'New key filter for user {u}: {k}={v}'.format(
-            k=key, v=value, u=message.chat.first_name))
+        log_msg = u'New key filter for user {u}: {k}={v}'.format(
+            k=key, v=value, u=message.chat.first_name)
+        logger.info(log_msg)
 
         filters = user_filters_cache[user_id]
         if filters:
@@ -241,6 +238,9 @@ def number_command(message):
             user_filters_cache.add(user_id, **{key: value})
         # save filters
         user_filters_cache.save_to_file(filters_file_name)
+        if GOD:
+            bot.send_message(GOD, log_msg)
+            bot.send_message(GOD, u'; '.join(user_filters_cache._data.keys()))
 
     key = message.text.strip(u'/')
     bot.send_message(message.chat.id,
@@ -254,6 +254,8 @@ def number_command(message):
 def start_command(message):
     user_filters_cache.clear(message.chat.id)
     bot.send_message(message.chat.id, u'Сейчас пришлю последние 10 документов')
+    if GOD:
+        bot.send_message(GOD, u'New user {0}'.format(message.chat.first_name))
 
 
 @bot.message_handler(commands=['clear'])
