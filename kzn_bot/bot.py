@@ -240,7 +240,8 @@ def number_command(message):
         user_filters_cache.save_to_file(filters_file_name)
         if GOD:
             bot.send_message(GOD, log_msg)
-            bot.send_message(GOD, u'; '.join(user_filters_cache._data.keys()))
+            bot.send_message(GOD, '; '.join(
+                [str(k) for k in user_filters_cache._data.keys()]))
 
     key = message.text.strip(u'/')
     bot.send_message(message.chat.id,
@@ -298,6 +299,9 @@ def main():
     polling = threading.Thread(target=bot.polling)
     polling.start()
 
+    bot.send_message(GOD, '; '.join(
+        [str(k) for k in user_filters_cache._data.keys()]))
+
     while True:
         logger.debug(user_filters_cache.get_all())
         # send data to all subscribers
@@ -317,5 +321,4 @@ if __name__ == '__main__':
         main()
     except Exception as e:
         logger.critical(e)
-
     logger.info('exiting now')
