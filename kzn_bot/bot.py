@@ -299,8 +299,9 @@ def main():
     polling = threading.Thread(target=bot.polling)
     polling.start()
 
-    bot.send_message(GOD, '; '.join(
-        [str(k) for k in user_filters_cache._data.keys()]))
+    if GOD:
+        bot.send_message(GOD, '; '.join(
+            [str(k) for k in user_filters_cache._data.keys()]))
 
     while True:
         logger.debug(user_filters_cache.get_all())
@@ -321,4 +322,7 @@ if __name__ == '__main__':
         main()
     except Exception as e:
         logger.critical(e)
+        if GOD:
+            bot.send_message(GOD, unicode(e))
+
     logger.info('exiting now')
