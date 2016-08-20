@@ -305,11 +305,7 @@ def presets_command(message):
         filter_name = msg.text
         if filter_name in presets:
             user_id = msg.chat.id
-            filter_obj = Filters(**presets[filter_name])
-            if user_id in user_filters_cache:
-                user_filters_cache[user_id].append(filter_obj)
-            else:
-                user_filters_cache[user_id] = [filter_obj]
+            user_filters_cache.add(user_id, **presets[filter_name])
 
             user_msg = u'Фильтр добавлен: {0}'.format(filter_name)
         else:
