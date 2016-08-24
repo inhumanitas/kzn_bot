@@ -106,6 +106,8 @@ def initialize_bot(token_path):
     @user_filters_cache.filter_saver(filters_file_name)
     def start_command(message):
         user_filters_cache.clear(message.chat.id)
+        logger.debug(
+            'New user %d : %s' % (message.chat.id, message.chat.first_name))
         BOT.send_message(message.chat.id,
                          u'Сейчас пришлю последние 10 документов')
         if GOD:
@@ -117,6 +119,7 @@ def initialize_bot(token_path):
     def clear_command(message):
         e = "Нет фильтрации"
         user_filters_cache.clear(message.chat.id)
+        logger.debug('User cleared filters: %d' % message.chat.id)
         BOT.send_message(message.chat.id,
                          str(user_filters_cache[message.chat.id]) or e)
 
@@ -125,19 +128,20 @@ def initialize_bot(token_path):
         e = "Нет фильтрации"
         BOT.send_message(message.chat.id,
                          str(user_filters_cache[message.chat.id]) or e)
+        logger.debug(str(message.chat.id) + ': ' +
+                     str(user_filters_cache[message.chat.id]))
 
     @bot.message_handler(commands=['add'])
     @user_filters_cache.filter_saver(filters_file_name)
     def add_command(message):
         if len(user_filters_cache[message.chat.id]) >= UserSearchData.max_filters:
-            BOT.send_message(
-                message.chat.id,
-                u'Достигнуто максимально допустимое количество '
-                u'фильтров: %d' % UserSearchData.max_filters)
+            msg = (u'Достигнуто максимально допустимое количество '
+                   u'фильтров: %d' % UserSearchData.max_filters)
         else:
             user_filters_cache.add(message.chat.id)
-            BOT.send_message(message.chat.id,
-                             str(user_filters_cache[message.chat.id]))
+            msg = str(user_filters_cache[message.chat.id])
+        logger.debug(msg)
+        BOT.send_message(message.chat.id, msg)
 
     @bot.message_handler(commands=['presets'])
     def presets_command(message):
@@ -154,6 +158,7 @@ def initialize_bot(token_path):
 
             markup = types.ReplyKeyboardHide()
             BOT.send_message(message.chat.id, user_msg, reply_markup=markup)
+            logger.debug(user_msg + u' ' + msg.chat.first_name)
             if GOD:
                 BOT.send_message(GOD, user_msg + u' ' + msg.chat.first_name)
 
@@ -361,6 +366,8 @@ def send_data(user_id, **kwargs):
             logger.critical(e)
             if GOD:
                 BOT.send_message(user_id, unicode(e) or 'unrecognized error')
+        else:
+            logger.debug('user "%s" got message: %s' % (user_id, msg))
 
 
 def main():
