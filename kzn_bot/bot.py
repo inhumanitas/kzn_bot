@@ -388,11 +388,13 @@ def main():
 
 
 if __name__ == '__main__':
-    try:
-        main()
-    except Exception as e:
-        logger.critical(e)
-        if GOD:
-            BOT.send_message(GOD, unicode(e))
+    # server forever
+    while True:
+        try:
+            main()
+        except Exception as e:
+            logger.critical(e)
+            if GOD:
+                BOT.send_message(GOD, unicode(e))
 
     logger.info('exiting now')
