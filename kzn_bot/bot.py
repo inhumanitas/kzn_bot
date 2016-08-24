@@ -4,6 +4,8 @@ import logging
 import logging.config
 import os
 import threading
+
+from requests import ConnectionError
 from time import sleep
 
 import requests
@@ -188,9 +190,13 @@ class Kzn(object):
 
     @classmethod
     def get_documents(cls, **kwargs):
-        page = requests.get(cls.get_url(**kwargs))
+        try:
+            page = requests.get(cls.get_url(**kwargs))
+        except ConnectionError:
+            page = None
+
         documents = []
-        if page.status_code == 200:
+        if page and page.status_code == 200:
             index_html = html.fromstring(page.text)
             documents = index_html.xpath(cls.xpath)
 
