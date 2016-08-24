@@ -366,7 +366,7 @@ def main():
 
     BOT, GOD = initialize_bot(token_path)
 
-    polling = threading.Thread(target=BOT.polling)
+    polling = threading.Thread(target=BOT.polling, kwargs={'none_stop': True})
     polling.start()
 
     if GOD:
