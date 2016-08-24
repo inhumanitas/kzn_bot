@@ -374,7 +374,6 @@ def main():
             [str(k) for k in user_filters_cache._data.keys()]) or 'No users')
 
     while True:
-        logger.debug(user_filters_cache.get_all())
         # send data to all subscribers
         for user_id in user_filters_cache.get_all().copy():
             user_filters = user_filters_cache[user_id]
