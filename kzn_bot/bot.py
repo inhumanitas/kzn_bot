@@ -393,7 +393,13 @@ if __name__ == '__main__':
             main()
         except Exception as e:
             logger.critical(e)
+            import traceback, sys
+            etype, value, tb = sys.exc_info()
+            lines = traceback.format_exception_only(etype, value)
+            logger.critical('\n'.join(lines))
+
             if GOD:
                 BOT.send_message(GOD, unicode(e))
+        sleep(30)
 
     logger.info('exiting now')
