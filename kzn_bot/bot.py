@@ -15,6 +15,8 @@ from telebot import types
 from lxml import html
 
 # handle if module is not installed in env
+from telebot.apihelper import ApiException
+
 try:
     from kzn_bot import storages
 except ImportError:
@@ -353,7 +355,12 @@ presets = {
 def send_data(user_id, **kwargs):
     for url, title in Kzn.get_new_doc(user_id, **kwargs):
         msg = title.replace(u'\n', u' ').strip() + u'\n' + url
-        BOT.send_message(user_id, msg)
+        try:
+            BOT.send_message(user_id, msg)
+        except ApiException as e:
+            logger.critical(e)
+            if GOD:
+                BOT.send_message(user_id, unicode(e) or 'unrecognized error')
 
 
 def main():
@@ -367,6 +374,7 @@ def main():
     BOT, GOD = initialize_bot(token_path)
 
     polling = threading.Thread(target=BOT.polling, kwargs={'none_stop': True})
+    polling.daemon = True
     polling.start()
 
     if GOD:
@@ -391,6 +399,9 @@ if __name__ == '__main__':
     while True:
         try:
             main()
+        except KeyboardInterrupt as e:
+            break
+
         except Exception as e:
             logger.critical(e)
             import traceback, sys
