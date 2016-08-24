@@ -14,6 +14,12 @@ from telebot import types
 
 from lxml import html
 
+# handle if module is not installed in env
+try:
+    from kzn_bot import storages
+except ImportError:
+    import storages
+
 logger = logging.getLogger(__name__)
 
 logging.config.dictConfig({
@@ -21,7 +27,8 @@ logging.config.dictConfig({
     'disable_existing_loggers': False,  # this fixes the problem
     'formatters': {
         'standard': {
-            'format': '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+            'format': '%(asctime)s - %(levelname)s - File: %(filename)s - '
+                      '%(funcName)s() - Line: %(lineno)d - %(message)s',
             'fmt': '%m/%d/%Y %H:%M:%S',
             'datefmt': '%m/%d/%Y %H:%M:%S'
         },
@@ -47,19 +54,117 @@ logging.config.dictConfig({
     }
 })
 
-
-token_path = 'token'
-if not os.path.exists(token_path):
-    raise ValueError('No token file found! get token from bot father')
-
-with open('token') as fh:
-    bot_father_token = fh.readline().strip()
-    GOD = fh.readline().strip()
-
-bot = telebot.TeleBot(bot_father_token)
+BOT = GOD = None
 
 GET_DATA_INTERVAL = 7
 filters_file_name = 'filters.json'
+
+
+def initialize_bot(token_path):
+    if not os.path.exists(token_path):
+        raise ValueError('No token file found! get token from bot father')
+
+    with open('token') as fh:
+        bot_father_token = fh.readline().strip()
+        god = fh.readline().strip()
+
+    bot = telebot.TeleBot(bot_father_token)
+
+    @bot.message_handler(commands=Filters.keys)
+    def number_command(message):
+        @user_filters_cache.filter_saver(filters_file_name)
+        def handler(message, key):
+            user_id = message.chat.id
+            value = message.text[:Filters.max_value_len]
+            log_msg = u'New key filter for user {u}: {k}={v}'.format(
+                k=key, v=value, u=message.chat.first_name)
+            logger.info(log_msg)
+
+            filters = user_filters_cache[user_id]
+            if filters:
+                cached_user_filter = user_filters_cache.get_last(user_id)
+                cached_user_filter.update(**{key: value})
+            else:
+                user_filters_cache.add(user_id, **{key: value})
+
+            if GOD:
+                BOT.send_message(GOD, log_msg)
+                BOT.send_message(GOD, '; '.join(
+                    [str(k) for k in user_filters_cache._data.keys()]))
+
+        key = message.text.strip(u'/')
+        BOT.send_message(message.chat.id,
+                         Filters.description.get(key,
+                                                 u'Не распознанная команда'))
+
+        callback_fn = lambda msg: handler(msg, key)
+        BOT.register_next_step_handler(message, callback_fn)
+
+    @bot.message_handler(commands=['start'])
+    @user_filters_cache.filter_saver(filters_file_name)
+    def start_command(message):
+        user_filters_cache.clear(message.chat.id)
+        BOT.send_message(message.chat.id,
+                         u'Сейчас пришлю последние 10 документов')
+        if GOD:
+            BOT.send_message(GOD,
+                             u'New user {0}'.format(message.chat.first_name))
+
+    @bot.message_handler(commands=['clear'])
+    @user_filters_cache.filter_saver(filters_file_name)
+    def clear_command(message):
+        e = "Нет фильтрации"
+        user_filters_cache.clear(message.chat.id)
+        BOT.send_message(message.chat.id,
+                         str(user_filters_cache[message.chat.id]) or e)
+
+    @bot.message_handler(commands=['list'])
+    def list_command(message):
+        e = "Нет фильтрации"
+        BOT.send_message(message.chat.id,
+                         str(user_filters_cache[message.chat.id]) or e)
+
+    @bot.message_handler(commands=['add'])
+    @user_filters_cache.filter_saver(filters_file_name)
+    def add_command(message):
+        if len(user_filters_cache[message.chat.id]) >= UserSearchData.max_filters:
+            BOT.send_message(
+                message.chat.id,
+                u'Достигнуто максимально допустимое количество '
+                u'фильтров: %d' % UserSearchData.max_filters)
+        else:
+            user_filters_cache.add(message.chat.id)
+            BOT.send_message(message.chat.id,
+                             str(user_filters_cache[message.chat.id]))
+
+    @bot.message_handler(commands=['presets'])
+    def presets_command(message):
+        @user_filters_cache.filter_saver(filters_file_name)
+        def callback(msg):
+            filter_name = msg.text
+            if filter_name in presets:
+                user_id = msg.chat.id
+                user_filters_cache.add(user_id, **presets[filter_name])
+
+                user_msg = u'Фильтр добавлен: {0}'.format(filter_name)
+            else:
+                user_msg = u'Неверно задан фильтр: {0}'.format(filter_name)
+
+            markup = types.ReplyKeyboardHide()
+            BOT.send_message(message.chat.id, user_msg, reply_markup=markup)
+            if GOD:
+                BOT.send_message(GOD, user_msg + u' ' + msg.chat.first_name)
+
+        markup = types.ReplyKeyboardMarkup(one_time_keyboard=True,
+                                           selective=True)
+        markup.row(*presets.keys())
+
+        msg = BOT.send_message(message.chat.id, u"Выберите фильтр",
+                               reply_markup=markup)
+
+        BOT.register_next_step_handler(msg, callback)
+
+    return bot, god
 
 
 class Filters(object):
@@ -130,6 +235,15 @@ class UserSearchData(object):
     def __contains__(self, item):
         return item in self._data
 
+    def filter_saver(self, file_name):
+        def wrapper(fn):
+            def inner(*args, **kwargs):
+                result = fn(*args, **kwargs)
+                self.save_to_file(file_name)
+                return result
+            return inner
+        return wrapper
+
     def clear(self, user_id):
         self._data[user_id] = []
 
@@ -173,11 +287,6 @@ class Kzn(object):
     # signed_after_date_fmt = 'd.m.Y'  # 16.08.2016
 
     xpath = u'//div[@class="search-result-item"]/a'
-    __data = {
-        # user_id: {
-        #   key: value
-        # }
-    }
 
     @classmethod
     def get_url(cls, **kwargs):
@@ -208,7 +317,7 @@ class Kzn(object):
     @classmethod
     def get_new_doc(cls, user_id, **kwargs):
         for url, title in cls.get_documents(**kwargs):
-            if url in cls.get_data_by_user(user_id):
+            if cls.document_sent(user_id, url):
                 continue
 
             cls.append_data_by_user(user_id, url, title)
@@ -216,16 +325,18 @@ class Kzn(object):
 
     @classmethod
     def append_data_by_user(cls, user_id, key, value):
-        if user_id in cls.__data:
-            cls.__data[user_id][key] = value
-        else:
-            cls.__data[user_id] = {
-                key: value
-            }
+        return storages.kzn_data.insert_one(user_id, key, value)
 
     @classmethod
-    def get_data_by_user(cls, user_id):
-        return cls.__data.get(user_id, {})
+    def document_sent(cls, user_id, key):
+        """
+        Cheks if document is already read by user
+        :param user_id: user identifier
+        :param key: uniq key for document
+        :return: True if document present in storage
+        """
+
+        return storages.kzn_data.exists(user_id, key)
 
 
 user_filters_cache = UserSearchData(filters_file_name)
@@ -239,113 +350,28 @@ presets = {
 }
 
 
-@bot.message_handler(commands=Filters.keys)
-def number_command(message):
-    def handler(message, key):
-        user_id = message.chat.id
-        value = message.text[:Filters.max_value_len]
-        log_msg = u'New key filter for user {u}: {k}={v}'.format(
-            k=key, v=value, u=message.chat.first_name)
-        logger.info(log_msg)
-
-        filters = user_filters_cache[user_id]
-        if filters:
-            cached_user_filter = user_filters_cache.get_last(user_id)
-            cached_user_filter.update(**{key: value})
-        else:
-            user_filters_cache.add(user_id, **{key: value})
-        # save filters
-        user_filters_cache.save_to_file(filters_file_name)
-        if GOD:
-            bot.send_message(GOD, log_msg)
-            bot.send_message(GOD, '; '.join(
-                [str(k) for k in user_filters_cache._data.keys()]))
-
-    key = message.text.strip(u'/')
-    bot.send_message(message.chat.id,
-                     Filters.description.get(key, u'Не распознанная команда'))
-
-    callback_fn = lambda msg: handler(msg, key)
-    bot.register_next_step_handler(message, callback_fn)
-
-
-@bot.message_handler(commands=['start'])
-def start_command(message):
-    user_filters_cache.clear(message.chat.id)
-    bot.send_message(message.chat.id, u'Сейчас пришлю последние 10 документов')
-    if GOD:
-        bot.send_message(GOD, u'New user {0}'.format(message.chat.first_name))
-
-
-@bot.message_handler(commands=['clear'])
-def clear_command(message):
-    e = "Нет фильтрации"
-    user_filters_cache.clear(message.chat.id)
-    bot.send_message(message.chat.id,
-                     str(user_filters_cache[message.chat.id]) or e)
-
-
-@bot.message_handler(commands=['list'])
-def list_command(message):
-    e = "Нет фильтрации"
-    bot.send_message(message.chat.id,
-                     str(user_filters_cache[message.chat.id]) or e)
-
-
-@bot.message_handler(commands=['add'])
-def add_command(message):
-    if len(user_filters_cache[message.chat.id]) >= UserSearchData.max_filters:
-        bot.send_message(
-            message.chat.id,
-            u'Достигнуто максимально допустимое количество '
-            u'фильтров: %d' % UserSearchData.max_filters)
-    else:
-        user_filters_cache.add(message.chat.id)
-        bot.send_message(message.chat.id,
-                         str(user_filters_cache[message.chat.id]))
-
-
-@bot.message_handler(commands=['presets'])
-def presets_command(message):
-    def callback(msg):
-        filter_name = msg.text
-        if filter_name in presets:
-            user_id = msg.chat.id
-            user_filters_cache.add(user_id, **presets[filter_name])
-
-            user_msg = u'Фильтр добавлен: {0}'.format(filter_name)
-        else:
-            user_msg = u'Неверно задан фильтр: {0}'.format(filter_name)
-
-        markup = types.ReplyKeyboardHide()
-        bot.send_message(message.chat.id, user_msg, reply_markup=markup)
-        if GOD:
-            bot.send_message(GOD, user_msg + u' ' + msg.chat.first_name)
-
-    markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, selective=True)
-    markup.row(*presets.keys())
-
-    msg = bot.send_message(message.chat.id, u"Выберите фильтр",
-                           reply_markup=markup)
-
-    bot.register_next_step_handler(msg, callback)
-
-
 def send_data(user_id, **kwargs):
     for url, title in Kzn.get_new_doc(user_id, **kwargs):
         msg = title.replace(u'\n', u' ').strip() + u'\n' + url
-        bot.send_message(user_id, msg)
+        BOT.send_message(user_id, msg)
 
 
 def main():
-    logger.info(u'Starting bot')
+    global BOT, GOD
 
-    polling = threading.Thread(target=bot.polling)
+    storages.prepare_db()
+
+    logger.info(u'Starting bot')
+    token_path = 'token'
+
+    BOT, GOD = initialize_bot(token_path)
+
+    polling = threading.Thread(target=BOT.polling)
     polling.start()
 
     if GOD:
-        bot.send_message(GOD, '; '.join(
-            [str(k) for k in user_filters_cache._data.keys()]))
+        BOT.send_message(GOD, '; '.join(
+            [str(k) for k in user_filters_cache._data.keys()]) or 'No users')
 
     while True:
         logger.debug(user_filters_cache.get_all())
@@ -367,6 +393,6 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(e)
         if GOD:
-            bot.send_message(GOD, unicode(e))
+            BOT.send_message(GOD, unicode(e))
 
     logger.info('exiting now')
