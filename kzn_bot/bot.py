@@ -410,7 +410,6 @@ if __name__ == '__main__':
             break
 
         except Exception as e:
-            logger.critical(e)
             import traceback, sys
             etype, value, tb = sys.exc_info()
             lines = traceback.format_exception_only(etype, value)
