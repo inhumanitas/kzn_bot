@@ -70,7 +70,7 @@ def initialize_bot(token_path):
         bot_father_token = fh.readline().strip()
         god = fh.readline().strip()
 
-    bot = telebot.TeleBot(bot_father_token)
+    bot = telebot.TeleBot(bot_father_token, threaded=False)
 
     @bot.message_handler(commands=Filters.keys)
     def number_command(message):
