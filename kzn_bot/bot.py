@@ -308,7 +308,7 @@ class Kzn(object):
     def get_documents(cls, **kwargs):
         try:
             page = requests.get(cls.get_url(**kwargs))
-        except ConnectionError:
+        except Exception as e:
             page = None
 
         documents = []
@@ -366,6 +366,11 @@ def send_data(user_id, **kwargs):
             logger.critical(e)
             if GOD:
                 BOT.send_message(user_id, unicode(e) or 'unrecognized error')
+        except Exception as e:
+            logger.critical(e)
+            if GOD:
+                BOT.send_message(user_id, unicode(e) or 'unrecognized error')
+
         else:
             logger.debug('user "%s" got message: %s' % (user_id, msg))
 
@@ -402,11 +407,12 @@ def main():
 
 
 if __name__ == '__main__':
-    # server forever
+    # serve forever
     while True:
         try:
             main()
         except KeyboardInterrupt as e:
+            logger.critical(e)
             break
 
         except Exception as e:
@@ -417,6 +423,7 @@ if __name__ == '__main__':
 
             if GOD:
                 BOT.send_message(GOD, unicode(e))
+                BOT.send_message(GOD, '\n'.join(lines))
         sleep(30)
 
     logger.info('exiting now')
