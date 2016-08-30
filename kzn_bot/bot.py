@@ -5,7 +5,6 @@ import logging.config
 import os
 import threading
 
-from requests import ConnectionError
 from time import sleep
 
 import requests
@@ -14,8 +13,6 @@ from telebot import types
 
 from lxml import html
 
-# handle if module is not installed in env
-from telebot.apihelper import ApiException
 
 try:
     from kzn_bot import storages
@@ -66,9 +63,15 @@ def initialize_bot(token_path):
     if not os.path.exists(token_path):
         raise ValueError('No token file found! get token from bot father')
 
-    with open('token') as fh:
+    with open(token_path) as fh:
         bot_father_token = fh.readline().strip()
         god = fh.readline().strip()
+
+    if BOT:
+        try:
+            BOT.stop_polling()
+        except:
+            pass
 
     bot = telebot.TeleBot(bot_father_token, threaded=False)
 
@@ -309,6 +312,7 @@ class Kzn(object):
         try:
             page = requests.get(cls.get_url(**kwargs))
         except Exception as e:
+            logger.error(e)
             page = None
 
         documents = []
@@ -350,11 +354,33 @@ user_filters_cache = UserSearchData(filters_file_name)
 
 presets = {
     # Name: Filter params
-    u'Дорожные знаки': {'title': u'движения',
-                        'signed_after': '01.08.2016'},
-    u'Градострой': {'title': u'градостроительных',
-                    'signed_after': '01.08.2016'},
+    u'Дорожные знаки': {
+        'title': u'движения',
+        'signed_after': '01.08.2016'},
+    u'Градострой': {
+        'title': u'градостроительных',
+        'signed_after': '01.08.2016'},
 }
+
+
+def emergency_message(message, default=None):
+    if not os.path.exists('token'):
+        raise ValueError('No token file found! get token from bot father')
+
+    with open('token') as fh:
+        bot_father_token = fh.readline().strip()
+        god = fh.readline().strip()
+
+    if god:
+        msg = message or default or 'Error occurred! Save the bot'
+        try:
+            bot = telebot.TeleBot(bot_father_token, threaded=False)
+            bot.send_message(god, msg)
+
+        except Exception as e:
+            logger.critical(e)
+    else:
+        logger.critical('No god persists')
 
 
 def send_data(user_id, **kwargs):
@@ -362,14 +388,9 @@ def send_data(user_id, **kwargs):
         msg = title.replace(u'\n', u' ').strip() + u'\n' + url
         try:
             BOT.send_message(user_id, msg)
-        except ApiException as e:
-            logger.critical(e)
-            if GOD:
-                BOT.send_message(user_id, unicode(e) or 'unrecognized error')
         except Exception as e:
             logger.critical(e)
-            if GOD:
-                BOT.send_message(user_id, unicode(e) or 'unrecognized error')
+            emergency_message(unicode(e), 'unrecognized error')
 
         else:
             logger.debug('user "%s" got message: %s' % (user_id, msg))
@@ -378,22 +399,34 @@ def send_data(user_id, **kwargs):
 def main():
     global BOT, GOD
 
+    def run_telegram_bot():
+        global BOT, GOD
+        BOT, GOD = initialize_bot(token_path)
+
+        polling = threading.Thread(target=BOT.polling,
+                                   kwargs={'none_stop': True})
+        polling.daemon = True
+        polling.start()
+        return polling
+
     storages.prepare_db()
 
     logger.info(u'Starting bot')
     token_path = 'token'
 
-    BOT, GOD = initialize_bot(token_path)
-
-    polling = threading.Thread(target=BOT.polling, kwargs={'none_stop': True})
-    polling.daemon = True
-    polling.start()
+    bot_daemon = run_telegram_bot()
 
     if GOD:
-        BOT.send_message(GOD, '; '.join(
+        BOT.send_message(GOD, 'Started, users: ' + '; '.join(
             [str(k) for k in user_filters_cache._data.keys()]) or 'No users')
 
     while True:
+
+        if not bot_daemon.is_alive():
+            logger.error('Bot down')
+            emergency_message('Bot down')
+            bot_daemon = run_telegram_bot()
+
         # send data to all subscribers
         for user_id in user_filters_cache.get_all().copy():
             user_filters = user_filters_cache[user_id]
@@ -420,10 +453,8 @@ if __name__ == '__main__':
             etype, value, tb = sys.exc_info()
             lines = traceback.format_exception_only(etype, value)
             logger.critical('\n'.join(lines))
+            emergency_message('\n'.join(lines))
 
-            if GOD:
-                BOT.send_message(GOD, unicode(e))
-                BOT.send_message(GOD, '\n'.join(lines))
         sleep(30)
 
     logger.info('exiting now')
