@@ -115,7 +115,7 @@ def initialize_bot(token_path):
                          u'Сейчас пришлю последние 10 документов')
         if GOD:
             BOT.send_message(GOD,
-                             u'New user {0}'.format(message.chat.first_name))
+                             u'New user {0}, {1}'.format(message.chat.first_name, unicode(message.chat.id)))
 
     @bot.message_handler(commands=['clear'])
     @user_filters_cache.filter_saver(filters_file_name)
@@ -321,7 +321,7 @@ class Kzn(object):
             documents = index_html.xpath(cls.xpath)
 
         for doc in documents:
-            url = cls.index + doc.get(u'href')
+            url = cls.index + doc.get(u'href') + u'/print_file'
             title = doc.text_content()
             yield url, title
 
@@ -390,7 +390,7 @@ def send_data(user_id, **kwargs):
             BOT.send_message(user_id, msg)
         except Exception as e:
             logger.critical(e)
-            emergency_message(unicode(e), 'unrecognized error')
+            emergency_message(unicode(user_id)+u' '+unicode(e), 'unrecognized error')
 
         else:
             logger.debug('user "%s" got message: %s' % (user_id, msg))
