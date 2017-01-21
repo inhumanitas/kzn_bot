@@ -2,7 +2,7 @@
 
 import unittest
 
-from kzn_bot.bot import Kzn
+from kzn_bot.sites import Kzn
 from kzn_bot.storages import prepare_db, con, KznData
 
 

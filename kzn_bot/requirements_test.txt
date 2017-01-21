@@ -1,0 +1,2 @@
+git-pylint-commit-hook
+git-pep8-commit-hook
